@@ -42,6 +42,7 @@ struct CameraPreviewView: UIViewRepresentable {
         let cameraManager: CameraManager
         @Binding var focusPoint: CGPoint?
         weak var previewView: UIView?
+        var focusTimer: Timer?
         
         init(cameraManager: CameraManager, focusPoint: Binding<CGPoint?>) {
             self.cameraManager = cameraManager
@@ -60,8 +61,16 @@ struct CameraPreviewView: UIViewRepresentable {
             
             let pointOfInterest = CGPoint(x: focusX, y: focusY)
             
-            // Update focus point for visual feedback
+            // Cancel any existing timer
+            focusTimer?.invalidate()
+            
+            // Reset focus point to nil first to trigger animation reset
             DispatchQueue.main.async {
+                self.focusPoint = nil
+            }
+            
+            // Small delay then set new focus point to trigger fresh animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 self.focusPoint = location
             }
             
@@ -69,9 +78,20 @@ struct CameraPreviewView: UIViewRepresentable {
             cameraManager.focus(at: pointOfInterest)
             
             // Clear focus point after animation
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.focusPoint = nil
+            focusTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.focusPoint = nil
+                }
             }
         }
     }
+}
+
+#Preview("Camera Preview") {
+    // Preview shows placeholder since CameraManager requires actual camera hardware
+    Text("Camera Preview View")
+        .font(.title)
+        .foregroundColor(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
 }

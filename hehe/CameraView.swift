@@ -4,13 +4,21 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 struct CameraView: View {
-    @StateObject private var cameraManager = CameraManager()
+    @StateObject private var cameraManager: CameraManager
     @State private var showCapturedImage = false
     @State private var showExposureControls = false
     @State private var focusPoint: CGPoint? = nil
     @State private var isFocusing = false
+    @State private var isAdjustingExposure = false
+    @State private var exposureAdjustmentStartY: CGFloat = 0
+    @State private var exposureAdjustmentValue: Float = 0
+    
+    init(cameraManager: CameraManager? = nil) {
+        _cameraManager = StateObject(wrappedValue: cameraManager ?? CameraManager())
+    }
     
     var body: some View {
         ZStack {
@@ -19,11 +27,26 @@ struct CameraView: View {
             if cameraManager.cameraPermissionGranted {
                 CameraPreviewView(cameraManager: cameraManager, focusPoint: $focusPoint)
                     .ignoresSafeArea()
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                handleExposureDrag(value: value)
+                            }
+                            .onEnded { _ in
+                                isAdjustingExposure = false
+                            }
+                    )
                 
                 // Focus indicator overlay
                 if let point = focusPoint {
-                    focusIndicator(at: point)
+                    focusIndicator()
+                        .position(point)
                         .transition(.scale.combined(with: .opacity))
+                }
+                
+                // Exposure adjustment indicator
+                if isAdjustingExposure {
+                    exposureAdjustmentIndicator
                 }
                 
                 VStack {
@@ -56,55 +79,49 @@ struct CameraView: View {
         }
     }
     
-    private func focusIndicator(at point: CGPoint) -> some View {
-        ZStack {
-            // Outer bracket - top left
-            Path { path in
-                let size: CGFloat = 60
-                let bracketLength: CGFloat = 20
-                
-                // Top horizontal
-                path.move(to: CGPoint(x: point.x - size/2, y: point.y - size/2))
-                path.addLine(to: CGPoint(x: point.x - size/2 + bracketLength, y: point.y - size/2))
-                
-                // Top vertical
-                path.move(to: CGPoint(x: point.x - size/2, y: point.y - size/2))
-                path.addLine(to: CGPoint(x: point.x - size/2, y: point.y - size/2 + bracketLength))
-                
-                // Top right horizontal
-                path.move(to: CGPoint(x: point.x + size/2 - bracketLength, y: point.y - size/2))
-                path.addLine(to: CGPoint(x: point.x + size/2, y: point.y - size/2))
-                
-                // Top right vertical
-                path.move(to: CGPoint(x: point.x + size/2, y: point.y - size/2))
-                path.addLine(to: CGPoint(x: point.x + size/2, y: point.y - size/2 + bracketLength))
-                
-                // Bottom left horizontal
-                path.move(to: CGPoint(x: point.x - size/2, y: point.y + size/2))
-                path.addLine(to: CGPoint(x: point.x - size/2 + bracketLength, y: point.y + size/2))
-                
-                // Bottom left vertical
-                path.move(to: CGPoint(x: point.x - size/2, y: point.y + size/2 - bracketLength))
-                path.addLine(to: CGPoint(x: point.x - size/2, y: point.y + size/2))
-                
-                // Bottom right horizontal
-                path.move(to: CGPoint(x: point.x + size/2 - bracketLength, y: point.y + size/2))
-                path.addLine(to: CGPoint(x: point.x + size/2, y: point.y + size/2))
-                
-                // Bottom right vertical
-                path.move(to: CGPoint(x: point.x + size/2, y: point.y + size/2 - bracketLength))
-                path.addLine(to: CGPoint(x: point.x + size/2, y: point.y + size/2))
-            }
-            .stroke(Color.yellow, lineWidth: 2)
-            
-            // Center crosshair
-            Plus()
-                .stroke(Color.yellow, lineWidth: 1.5)
-                .frame(width: 12, height: 12)
+    private func handleExposureDrag(value: DragGesture.Value) {
+        if !isAdjustingExposure {
+            isAdjustingExposure = true
+            exposureAdjustmentStartY = value.location.y
+            exposureAdjustmentValue = cameraManager.exposureBias
         }
-        .frame(width: 80, height: 80)
-        .scaleEffect(isFocusing ? 0.8 : 1.2)
-        .animation(.easeInOut(duration: 0.3), value: isFocusing)
+        
+        // Calculate drag distance (negative because dragging up should increase exposure)
+        let dragDistance = (exposureAdjustmentStartY - value.location.y) / 300
+        let exposureStep: Float = 0.1
+        let newBias = exposureAdjustmentValue + Float(dragDistance) * 3.0
+        
+        // Apply the new exposure bias
+        let clampedBias = max(cameraManager.minExposureBias, min(cameraManager.maxExposureBias, newBias))
+        cameraManager.setExposureBias(clampedBias)
+    }
+    
+    private var exposureAdjustmentIndicator: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "sun.max.fill")
+                .font(.system(size: 24))
+                .foregroundColor(.yellow)
+            
+            Text(String(format: "%.1f", cameraManager.exposureBias))
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(.white)
+                .monospacedDigit()
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.6))
+        )
+        .position(x: UIScreen.main.bounds.width - 60, y: UIScreen.main.bounds.height / 2)
+    }
+    
+    private func focusIndicator() -> some View {
+        FocusIndicatorShape()
+            .stroke(Color.yellow, lineWidth: 2)
+            .frame(width: 80, height: 80)
+            .scaleEffect(isFocusing ? 0.8 : 1.2)
+            .animation(.easeInOut(duration: 0.3), value: isFocusing)
     }
     
     private var controlsOverlay: some View {
@@ -123,9 +140,11 @@ struct CameraView: View {
                             cameraManager.switchLens(to: lens)
                         }) {
                             Text(lens.label + "x")
-                                .font(.system(size: 16, weight: .bold))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .monospaced()
                                 .foregroundColor(cameraManager.currentZoomLevel == lens.zoomLevel ? .black : .white)
-                                .frame(width: 50, height: 50)
+                                .frame(width: 44, height: 44)
                                 .background(
                                     cameraManager.currentZoomLevel == lens.zoomLevel
                                     ? Color.white
@@ -143,15 +162,13 @@ struct CameraView: View {
                     showExposureControls.toggle()
                 }) {
                     VStack(spacing: 4) {
-                        Image(systemName: "sun.max.fill")
-                            .font(.system(size: 20))
-                        Text(String(format: "%.1f", cameraManager.exposureBias))
-                            .font(.system(size: 10))
+                        Text(String(format: "EV %.1f", cameraManager.exposureBias))
+                              .font(.subheadline)
+                              .monospaced()
+                              .fontWeight(.semibold)
+                              .foregroundStyle(.yellow)
                     }
                     .foregroundColor(showExposureControls ? .black : .white)
-                    .frame(width: 50, height: 50)
-                    .background(showExposureControls ? Color.white : Color.white.opacity(0.2))
-                    .clipShape(Circle())
                 }
                 
                 Button(action: {
@@ -189,14 +206,6 @@ struct CameraView: View {
             }
             .padding(.bottom, 40)
         }
-        .background(
-            LinearGradient(
-                gradient: Gradient(colors: [.black.opacity(0.6), .clear]),
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            .ignoresSafeArea()
-        )
     }
     
     private var exposureControlView: some View {
@@ -310,26 +319,71 @@ struct CameraView: View {
     }
 }
 
-// Shape for focus indicator crosshair
-struct Plus: Shape {
+// Shape for focus indicator with brackets and crosshair
+struct FocusIndicatorShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let centerX = rect.midX
-        let centerY = rect.midY
-        let length = min(rect.width, rect.height) / 2
+        // Adjust Y to account for safe area - draw higher up
+        let centerY = rect.midY - 80
+        let bracketSize: CGFloat = 60
+        let bracketLength: CGFloat = 20
+        let halfBracket = bracketSize / 2
+        let crosshairLength: CGFloat = 6
         
-        // Horizontal line
-        path.move(to: CGPoint(x: centerX - length, y: centerY))
-        path.addLine(to: CGPoint(x: centerX + length, y: centerY))
+        // Top left corner bracket
+        path.move(to: CGPoint(x: centerX - halfBracket, y: centerY - halfBracket))
+        path.addLine(to: CGPoint(x: centerX - halfBracket + bracketLength, y: centerY - halfBracket))
+        path.move(to: CGPoint(x: centerX - halfBracket, y: centerY - halfBracket))
+        path.addLine(to: CGPoint(x: centerX - halfBracket, y: centerY - halfBracket + bracketLength))
         
-        // Vertical line
-        path.move(to: CGPoint(x: centerX, y: centerY - length))
-        path.addLine(to: CGPoint(x: centerX, y: centerY + length))
+        // Top right corner bracket
+        path.move(to: CGPoint(x: centerX + halfBracket - bracketLength, y: centerY - halfBracket))
+        path.addLine(to: CGPoint(x: centerX + halfBracket, y: centerY - halfBracket))
+        path.move(to: CGPoint(x: centerX + halfBracket, y: centerY - halfBracket))
+        path.addLine(to: CGPoint(x: centerX + halfBracket, y: centerY - halfBracket + bracketLength))
+        
+        // Bottom left corner bracket
+        path.move(to: CGPoint(x: centerX - halfBracket, y: centerY + halfBracket))
+        path.addLine(to: CGPoint(x: centerX - halfBracket + bracketLength, y: centerY + halfBracket))
+        path.move(to: CGPoint(x: centerX - halfBracket, y: centerY + halfBracket - bracketLength))
+        path.addLine(to: CGPoint(x: centerX - halfBracket, y: centerY + halfBracket))
+        
+        // Bottom right corner bracket
+        path.move(to: CGPoint(x: centerX + halfBracket - bracketLength, y: centerY + halfBracket))
+        path.addLine(to: CGPoint(x: centerX + halfBracket, y: centerY + halfBracket))
+        path.move(to: CGPoint(x: centerX + halfBracket, y: centerY + halfBracket - bracketLength))
+        path.addLine(to: CGPoint(x: centerX + halfBracket, y: centerY + halfBracket))
+        
+        // Center crosshair - horizontal
+        path.move(to: CGPoint(x: centerX - crosshairLength, y: centerY))
+        path.addLine(to: CGPoint(x: centerX + crosshairLength, y: centerY))
+        
+        // Center crosshair - vertical
+        path.move(to: CGPoint(x: centerX, y: centerY - crosshairLength))
+        path.addLine(to: CGPoint(x: centerX, y: centerY + crosshairLength))
         
         return path
     }
 }
 
-#Preview {
-    CameraView()
+class PreviewCameraManager: CameraManager {
+    override init() {
+        super.init()
+        // Override to show camera UI in preview without real camera hardware
+        self.cameraPermissionGranted = true
+        self.availableLenses = [
+            Lens(deviceType: .builtInUltraWideCamera, label: "0.5", zoomLevel: 0.5),
+            Lens(deviceType: .builtInWideAngleCamera, label: "1", zoomLevel: 1.0),
+            Lens(deviceType: .builtInTelephotoCamera, label: "3", zoomLevel: 3.0)
+        ]
+        self.currentZoomLevel = 1.0
+        self.exposureBias = 0.0
+        self.minExposureBias = -8.0
+        self.maxExposureBias = 8.0
+    }
+}
+
+#Preview("Camera View - UI Preview") {
+    CameraView(cameraManager: PreviewCameraManager())
 }

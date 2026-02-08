@@ -9,17 +9,17 @@ import Combine
 import CoreMedia
 import Photos
 
-class CameraManager: NSObject, ObservableObject {
-    @Published var cameraPermissionGranted = false
-    @Published var photoLibraryPermissionGranted = false
-    @Published var sessionRunning = false
-    @Published var captureError: Error?
-    @Published var lastCapturedImage: UIImage?
-    @Published var currentZoomLevel: CGFloat = 1.0
-    @Published var availableLenses: [Lens] = []
-    @Published var exposureBias: Float = 0.0
-    @Published var minExposureBias: Float = -8.0
-    @Published var maxExposureBias: Float = 8.0
+public class CameraManager: NSObject, ObservableObject {
+    @Published public var cameraPermissionGranted = false
+    @Published public var photoLibraryPermissionGranted = false
+    @Published public var sessionRunning = false
+    @Published public var captureError: Error?
+    @Published public var lastCapturedImage: UIImage?
+    @Published public var currentZoomLevel: CGFloat = 1.0
+    @Published public var availableLenses: [Lens] = []
+    @Published public var exposureBias: Float = 0.0
+    @Published public var minExposureBias: Float = -8.0
+    @Published public var maxExposureBias: Float = 8.0
     
     private var captureSession: AVCaptureSession?
     private var photoOutput: AVCapturePhotoOutput?
@@ -28,14 +28,20 @@ class CameraManager: NSObject, ObservableObject {
     private var rawPhotoProcessor: CIContext?
     private var currentCaptureID: Int64 = 0
     
-    struct Lens: Identifiable {
-        let id = UUID()
-        let deviceType: AVCaptureDevice.DeviceType
-        let label: String
-        let zoomLevel: CGFloat
+    public struct Lens: Identifiable {
+        public let id = UUID()
+        public let deviceType: AVCaptureDevice.DeviceType
+        public let label: String
+        public let zoomLevel: CGFloat
+        
+        public init(deviceType: AVCaptureDevice.DeviceType, label: String, zoomLevel: CGFloat) {
+            self.deviceType = deviceType
+            self.label = label
+            self.zoomLevel = zoomLevel
+        }
     }
     
-    override init() {
+    public override init() {
         super.init()
         checkPermissions()
     }
@@ -212,7 +218,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    func startSession() {
+    public func startSession() {
         guard let session = captureSession else { return }
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -225,7 +231,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    func stopSession() {
+    public func stopSession() {
         guard let session = captureSession else { return }
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -238,7 +244,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    func capturePhoto() {
+    public func capturePhoto() {
         guard let photoOutput = photoOutput else { return }
         
         let photoSettings: AVCapturePhotoSettings
@@ -264,7 +270,7 @@ class CameraManager: NSObject, ObservableObject {
         photoOutput.capturePhoto(with: photoSettings, delegate: self)
     }
     
-    func toggleFlash() {
+    public func toggleFlash() {
         guard let device = videoDeviceInput?.device else { return }
         
         do {
@@ -278,7 +284,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    func setExposureBias(_ bias: Float) {
+    public func setExposureBias(_ bias: Float) {
         guard let device = videoDeviceInput?.device else { return }
         
         do {
@@ -299,7 +305,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    func setupExposureObserver() {
+    public func setupExposureObserver() {
         guard let device = videoDeviceInput?.device else { return }
         
         DispatchQueue.main.async {
@@ -309,7 +315,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    func switchLens(to lens: Lens) {
+    public func switchLens(to lens: Lens) {
         guard let session = captureSession else { return }
         
         session.beginConfiguration()
@@ -344,7 +350,7 @@ class CameraManager: NSObject, ObservableObject {
         session.commitConfiguration()
     }
     
-    func switchCamera() {
+    public func switchCamera() {
         guard let session = captureSession else { return }
         
         session.beginConfiguration()
@@ -370,14 +376,14 @@ class CameraManager: NSObject, ObservableObject {
         session.commitConfiguration()
     }
     
-    func getPreviewLayer() -> AVCaptureVideoPreviewLayer? {
+    public func getPreviewLayer() -> AVCaptureVideoPreviewLayer? {
         guard let session = captureSession else { return nil }
         let previewLayer = AVCaptureVideoPreviewLayer(session: session)
         previewLayer.videoGravity = .resizeAspectFill
         return previewLayer
     }
     
-    func focus(at pointOfInterest: CGPoint) {
+    public func focus(at pointOfInterest: CGPoint) {
         guard let device = videoDeviceInput?.device else { return }
         
         do {
@@ -393,8 +399,16 @@ class CameraManager: NSObject, ObservableObject {
                 device.exposureMode = .autoExpose
             }
             
+            // Reset exposure bias to 0 (auto) when tapping to focus
+            device.setExposureTargetBias(0)
+            
             device.unlockForConfiguration()
-            print("Focus set to: \(pointOfInterest)")
+            
+            DispatchQueue.main.async {
+                self.exposureBias = 0
+            }
+            
+            print("Focus set to: \(pointOfInterest), exposure reset to auto")
         } catch {
             print("Error setting focus: \(error)")
         }
@@ -402,7 +416,7 @@ class CameraManager: NSObject, ObservableObject {
 }
 
 extension CameraManager: AVCapturePhotoCaptureDelegate {
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+    public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error = error {
             print("Error capturing photo: \(error)")
             DispatchQueue.main.async {
