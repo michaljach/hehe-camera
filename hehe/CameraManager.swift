@@ -20,8 +20,9 @@ public class CameraManager: NSObject, ObservableObject {
     @Published public var exposureBias: Float = 0.0
     @Published public var minExposureBias: Float = -8.0
     @Published public var maxExposureBias: Float = 8.0
+    @Published public var captureSession: AVCaptureSession?
     
-    private var captureSession: AVCaptureSession?
+    private var previewLayer: AVCaptureVideoPreviewLayer?
     private var photoOutput: AVCapturePhotoOutput?
     private var videoDeviceInput: AVCaptureDeviceInput?
     
@@ -207,13 +208,23 @@ public class CameraManager: NSObject, ObservableObject {
             }
             
             session.commitConfiguration()
-            self.captureSession = session
+            
+            DispatchQueue.main.async {
+                self.captureSession = session
+                
+                // Create and store the preview layer
+                let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+                previewLayer.videoGravity = .resizeAspectFill
+                self.previewLayer = previewLayer
+            }
             
             // Setup exposure observer
             setupExposureObserver()
             
         } catch {
-            self.captureError = error
+            DispatchQueue.main.async {
+                self.captureError = error
+            }
             print("Error setting up capture session: \(error)")
         }
     }
@@ -377,9 +388,6 @@ public class CameraManager: NSObject, ObservableObject {
     }
     
     public func getPreviewLayer() -> AVCaptureVideoPreviewLayer? {
-        guard let session = captureSession else { return nil }
-        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.videoGravity = .resizeAspectFill
         return previewLayer
     }
     

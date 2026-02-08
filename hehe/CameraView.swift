@@ -68,6 +68,11 @@ struct CameraView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
+        .onChange(of: cameraManager.captureSession) { newSession in
+            if newSession != nil {
+                cameraManager.startSession()
+            }
+        }
         .onChange(of: focusPoint) { newPoint in
             if newPoint != nil {
                 withAnimation(.easeInOut(duration: 0.2)) {

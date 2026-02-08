@@ -14,24 +14,40 @@ struct CameraPreviewView: UIViewRepresentable {
         let view = UIView(frame: UIScreen.main.bounds)
         view.isUserInteractionEnabled = true
         
-        if let previewLayer = cameraManager.getPreviewLayer() {
-            previewLayer.frame = view.bounds
-            view.layer.addSublayer(previewLayer)
-        }
+        // Add preview layer if available
+        addPreviewLayer(to: view)
         
         // Add tap gesture
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         view.addGestureRecognizer(tapGesture)
         
+        context.coordinator.previewView = view
+        
         return view
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
-        if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
-            previewLayer.frame = uiView.bounds
+        // Try to add preview layer if not already present (handles permission grant case)
+        let hasPreviewLayer = uiView.layer.sublayers?.contains(where: { $0 is AVCaptureVideoPreviewLayer }) ?? false
+        if !hasPreviewLayer {
+            addPreviewLayer(to: uiView)
+        }
+        
+        // Update frame for all preview layers
+        uiView.layer.sublayers?.forEach { layer in
+            if let previewLayer = layer as? AVCaptureVideoPreviewLayer {
+                previewLayer.frame = uiView.bounds
+            }
         }
         
         context.coordinator.previewView = uiView
+    }
+    
+    private func addPreviewLayer(to view: UIView) {
+        if let previewLayer = cameraManager.getPreviewLayer() {
+            previewLayer.frame = view.bounds
+            view.layer.addSublayer(previewLayer)
+        }
     }
     
     func makeCoordinator() -> Coordinator {
